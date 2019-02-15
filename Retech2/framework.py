@@ -39,7 +39,7 @@ def index():
 @app.route("/signin", methods = ["GET", "POST"])
 def signin():
     if session.get("userName"):
-        return redirect(url_for("/"))
+        return redirect(url_for("index"))
     if request.method == "POST":
         enrollNo = request.form.get("enrollNo")
         password = request.form.get("password")
@@ -59,6 +59,8 @@ def signin():
 
 @app.route("/signup", methods = ["GET", "POST"])
 def signup():
+    if session.get("userName"):
+        return redirect(url_for("index"))
     if request.method == "POST":
         data     = {
             "enrollNo" : request.form.get("enrollNo"),
@@ -76,14 +78,20 @@ def signup():
 
 @app.route("/admin", methods = ["GET", "POST"])
 def admin():
+    if not session.get("userName") or not session["adminCh"]:
+        return redirect(url_for("index"))
     pass
 
 @app.route("/dept/<college>/<course>/<int:semester>")
 def selection(college, course, semester):
+    if not session.get("userName"):
+        return redirect(url_for("index"))
     return render_template("selection.html", college = college, course = course, semester = semester)
 
 @app.route("/dept/<college>")
 def dept(college):
+    if not session.get("userName"):
+        return redirect(url_for("index"))
     cl = {
         "iips":"iips.html",
         "ims":"ims.html",
@@ -96,25 +104,37 @@ def dept(college):
 
 @app.route("/dept/<college>/<course>/<int:semester>/upload", methods = ["GET", "POST"])
 def upload(college, course, semester):
+    if not session.get("userName"):
+        return redirect(url_for("index"))
     if request.method == "POST":
         target = os.path.join(APP_ROOT, "")
         if not os.path.isdir(APP_ROOT):
             os.mkdir(target)
         file = request.files["upload"]
-        if file and allowed_file(file.filename):
-            file.save(os.path.join(target, file.filename))
-            storage.child(college+"/"+course+"/"+str(semester)+"/"+file.filename).put(file.filename)
-            os.remove(os.path.join(target, file.filename))
-            return redirect("/")
+        file.save(os.path.join(target, file.filename))
+        uploadLoc = college+"/"+course+"/"+str(semester)+"/"+file.filename
+        storage.child(uploadLoc).put(file.filename)
+        os.remove(os.path.join(target, file.filename))
+        db.child("uploads").child(session.get("userName")).set(uploadLoc)
+        return redirect("/")
     return render_template("upload.html")
 
 @app.route("/dept/<college>/<course>/<int:semester>/view")
 def view(college, course, semester):
-    print(storage.child(college+"/"+course+"/"+str(semester)))
-
+    # if not session.get("userName"):
+    #     return redirect(url_for("index"))
+    result = db.child("uploads").get()
+    link = college+"/"+course+"/"+str(semester)
+    returnDict = {}
+    for data in result.each():
+        if link in data.val():
+            returnDict[data.key()] = data.val()
+    print(returnDict)
 
 @app.route("/logout")
 def logout():
+    if not session.get("userName"):
+        return redirect(url_for("index"))
     session.pop("userName")
     session["adminCh"] = False
     return redirect("signin")
